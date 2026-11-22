@@ -127,6 +127,30 @@ When the parent repository is bare, or git is too old to support
         (agent-shell-worktree--git "rev-parse" "--show-toplevel")
       (string-remove-prefix "worktree " (seq-first fields)))))
 
+(defcustom agent-shell-worktree-create-function #'agent-shell-worktree-create
+  "Function that creates a git worktree at a given path.
+
+Called with one argument, the absolute worktree PATH, and
+`default-directory' bound to the main worktree root (or the current
+worktree root, when the parent repository is bare).  Must create the
+worktree at PATH or signal an error.  The return value is ignored."
+  :type 'function
+  :group 'agent-shell)
+
+(defun agent-shell-worktree-create (path)
+  "Create a git worktree at PATH, signaling an error on failure.
+
+The default `agent-shell-worktree-create-function'.
+
+For example:
+
+  (agent-shell-worktree-create \"/repo/.agent-shell/worktrees/topic\")"
+  (let ((output (shell-command-to-string
+                 (format "git worktree add %s 2>&1"
+                         (shell-quote-argument path)))))
+    (unless (file-exists-p path)
+      (user-error "Failed to create worktree: %s" output))))
+
 ;;;###autoload
 (defun agent-shell-new-worktree-shell ()
   "Create a new git worktree and start an agent shell in it.
@@ -149,14 +173,11 @@ The user is prompted to confirm or edit the worktree path before creation."
     (when (file-exists-p worktree-path)
       (user-error "Directory already exists: %s" worktree-path))
     (make-directory (file-name-directory worktree-path) t)
-    ;; Create the worktree
-    (let ((output (shell-command-to-string
-                   (format "git worktree add %s 2>&1"
-                           (shell-quote-argument worktree-path)))))
-      (unless (file-exists-p worktree-path)
-        (user-error "Failed to create worktree: %s" output))
-      (let ((default-directory worktree-path))
-        (agent-shell '(4))))))
+    (funcall agent-shell-worktree-create-function worktree-path)
+    (unless (file-exists-p worktree-path)
+      (user-error "Worktree was not created: %s" worktree-path))
+    (let ((default-directory worktree-path))
+      (agent-shell '(4)))))
 
 (provide 'agent-shell-worktree)
 
